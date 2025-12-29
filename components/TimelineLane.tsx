@@ -43,11 +43,11 @@ export default function TimelineLane({ tasks, startDate, endDate, onTaskClick, o
     }
   }
 
-  // Layout algorithm to prevent overlaps
+  // Layout algorithm - position tasks strictly by their dates, no pushing down
   const layoutTasks = (): TaskLayout[] => {
     if (tasks.length === 0) return []
 
-    // Sort tasks by start date
+    // Sort tasks by start date, then by end date
     const sortedTasks = [...tasks].sort((a, b) => {
       const startA = new Date(a.startDate).getTime()
       const startB = new Date(b.startDate).getTime()
@@ -56,62 +56,28 @@ export default function TimelineLane({ tasks, startDate, endDate, onTaskClick, o
     })
 
     const layouts: TaskLayout[] = []
-    const rows: Task[][] = []
 
-    // Group overlapping tasks into rows
-    sortedTasks.forEach(task => {
+    // Place each task at its actual date position, no overlap avoidance
+    sortedTasks.forEach((task, index) => {
       const taskStart = new Date(task.startDate).getTime()
       const taskEnd = new Date(task.endDate).getTime()
       
-      let placed = false
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i]
-        // Check if task doesn't overlap with any task in this row
-        const noOverlap = row.every(existingTask => {
-          const existingStart = new Date(existingTask.startDate).getTime()
-          const existingEnd = new Date(existingTask.endDate).getTime()
-          return taskEnd <= existingStart || taskStart >= existingEnd
-        })
-        
-        if (noOverlap) {
-          row.push(task)
-          placed = true
-          break
-        }
-      }
+      // Calculate position based on actual task dates
+      const totalDays = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+      const daysFromStart = (taskStart - startDate.getTime()) / (1000 * 60 * 60 * 24)
+      const taskDuration = (taskEnd - taskStart) / (1000 * 60 * 60 * 24)
       
-      if (!placed) {
-        rows.push([task])
-      }
-    })
-
-    // Calculate positions for each task - stack overlapping tasks horizontally with spacing
-    const taskRowMap = new Map<string, number>()
-    rows.forEach((row, rowIndex) => {
-      row.forEach(task => {
-        taskRowMap.set(task.id, rowIndex)
-      })
-    })
-
-    const maxRows = Math.max(1, rows.length)
-    const spacing = 3 // Percentage spacing between tasks horizontally
-    const availableWidth = 100 - (spacing * (maxRows - 1))
-    const taskWidth = availableWidth / maxRows
-    
-    sortedTasks.forEach(task => {
-      const { topPercent, heightPercent } = calculateTaskPosition(task)
-      const rowIndex = taskRowMap.get(task.id) || 0
-      
-      // Calculate minimum height based on duration, but allow content to expand
-      const minHeightPx = Math.max(60, heightPercent * 6)
+      const topPercent = Math.max(0, (daysFromStart / totalDays) * 100)
+      const heightPercent = Math.max(2, (taskDuration / totalDays) * 100)
+      const minHeightPx = Math.max(80, heightPercent * 8) // Increased min height
       
       layouts.push({
         task,
         top: topPercent,
-        height: minHeightPx, // This will be minHeight in CSS
-        left: (taskWidth + spacing) * rowIndex + 1,
-        width: taskWidth - 2,
-        row: rowIndex
+        height: minHeightPx,
+        left: 1,
+        width: 98, // Full width minus small margins
+        row: index
       })
     })
 
@@ -119,6 +85,11 @@ export default function TimelineLane({ tasks, startDate, endDate, onTaskClick, o
   }
 
   const layouts = layoutTasks()
+  
+  // Calculate the maximum bottom position to extend timeline automatically
+  const maxBottom = layouts.length > 0 
+    ? Math.max(...layouts.map(l => l.top + (l.height / 8))) 
+    : 100
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     setDraggedTask(taskId)
@@ -176,7 +147,11 @@ export default function TimelineLane({ tasks, startDate, endDate, onTaskClick, o
       <div 
         className="tasks-container" 
         ref={containerRef}
-        style={{ minHeight: '600px', position: 'relative' }}
+        style={{ 
+          minHeight: `${Math.max(1200, maxBottom * 12)}px`, 
+          height: '100%', 
+          position: 'relative' 
+        }}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
