@@ -40,14 +40,20 @@ export default function TimelineManager() {
     const savedTasks = localStorage.getItem('timelineTasks')
     if (savedTasks) {
       try {
-        setTasks(JSON.parse(savedTasks))
+        const parsed = JSON.parse(savedTasks)
+        // Only use saved tasks if the array has items
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setTasks(parsed)
+          return
+        }
       } catch (e) {
         console.error('Failed to load tasks:', e)
       }
-    } else {
-      // Load initial tasks if no saved tasks exist
-      const today = new Date()
-      const initialTasks: Task[] = [
+    }
+    
+    // Load initial tasks if no saved tasks exist or array is empty
+    const today = new Date()
+    const initialTasks: Task[] = [
         // Immediate Next Steps (Days 0-5)
         {
           id: '1',
@@ -279,8 +285,7 @@ export default function TimelineManager() {
           description: 'Decide if/when to file provisional patent, expand outreach'
         }
       ]
-      setTasks(initialTasks)
-    }
+    setTasks(initialTasks)
   }, [])
 
   useEffect(() => {
@@ -326,6 +331,10 @@ export default function TimelineManager() {
     }
   }
 
+  const handleTaskUpdate = (taskId: string, updates: Partial<Task>) => {
+    setTasks(tasks.map(t => t.id === taskId ? { ...t, ...updates } : t))
+  }
+
   const getLaneCount = (lane: string) => {
     return tasks.filter(t => t.lane === lane).length
   }
@@ -353,6 +362,20 @@ export default function TimelineManager() {
           <button className="btn-primary" onClick={handleAddTask}>
             + Add Task
           </button>
+          {tasks.length === 0 && (
+            <button 
+              className="btn-secondary" 
+              onClick={() => {
+                if (confirm('Load initial 3-month execution plan tasks?')) {
+                  localStorage.removeItem('timelineTasks')
+                  window.location.reload()
+                }
+              }}
+              style={{ fontSize: '0.85rem', padding: '8px 16px' }}
+            >
+              Load Initial Tasks
+            </button>
+          )}
           <div className="date-range">
             {formatDateRange()}
           </div>
@@ -388,6 +411,7 @@ export default function TimelineManager() {
                   startDate={startDate}
                   endDate={endDate}
                   onTaskClick={handleEditTask}
+                  onTaskUpdate={handleTaskUpdate}
                 />
               ))}
             </div>
