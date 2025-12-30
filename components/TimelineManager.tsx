@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import TaskModal from './TaskModal'
 import TimelineLane from './TimelineLane'
 import TimelineRuler from './TimelineRuler'
@@ -19,10 +19,10 @@ export interface Task {
 export type ViewMode = 'months' | 'weeks' | 'days'
 
 const LANE_NAMES = {
-  testing: 'Testing Timeline',
-  design: 'Design Revisions',
-  prototype: 'Prototype Readiness',
-  outreach: 'Outreach Timing'
+  testing: 'Testing',
+  design: 'Design',
+  prototype: 'Prototype',
+  outreach: 'Outreach'
 }
 
 export default function TimelineManager() {
@@ -30,6 +30,7 @@ export default function TimelineManager() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('months')
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set())
   
   const startDate = new Date()
   const endDate = new Date()
@@ -293,6 +294,53 @@ export default function TimelineManager() {
     localStorage.setItem('timelineTasks', JSON.stringify(tasks))
   }, [tasks])
 
+  const handleTaskSelect = (taskId: string, ctrlKey: boolean) => {
+    if (ctrlKey) {
+      // Toggle selection
+      setSelectedTaskIds(prev => {
+        const newSet = new Set(prev)
+        if (newSet.has(taskId)) {
+          newSet.delete(taskId)
+        } else {
+          newSet.add(taskId)
+        }
+        return newSet
+      })
+    } else {
+      // Single select (clear others)
+      setSelectedTaskIds(new Set([taskId]))
+    }
+  }
+
+  // Handle keyboard shortcuts for multi-select deletion
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+Delete or Ctrl+Backspace to delete selected tasks
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'Delete' || e.key === 'Backspace')) {
+        setSelectedTaskIds(currentSelected => {
+          if (currentSelected.size === 0) return currentSelected
+          
+          const count = currentSelected.size
+          if (confirm(`Are you sure you want to delete ${count} task${count !== 1 ? 's' : ''}?`)) {
+            setTasks(prevTasks => prevTasks.filter(t => !currentSelected.has(t.id)))
+            setIsModalOpen(false)
+            setEditingTask(null)
+            return new Set()
+          }
+          return currentSelected
+        })
+        e.preventDefault()
+      }
+      // Escape to clear selection
+      if (e.key === 'Escape') {
+        setSelectedTaskIds(new Set())
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   const handleAddTask = () => {
     setEditingTask(null)
     setIsModalOpen(true)
@@ -412,6 +460,8 @@ export default function TimelineManager() {
                   endDate={endDate}
                   onTaskClick={handleEditTask}
                   onTaskUpdate={handleTaskUpdate}
+                  selectedTaskIds={selectedTaskIds}
+                  onTaskSelect={handleTaskSelect}
                 />
               ))}
             </div>

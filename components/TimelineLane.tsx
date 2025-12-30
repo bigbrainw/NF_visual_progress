@@ -10,6 +10,8 @@ interface TimelineLaneProps {
   endDate: Date
   onTaskClick: (taskId: string) => void
   onTaskUpdate: (taskId: string, updates: Partial<Task>) => void
+  selectedTaskIds: Set<string>
+  onTaskSelect: (taskId: string, ctrlKey: boolean) => void
 }
 
 interface TaskLayout {
@@ -21,7 +23,7 @@ interface TaskLayout {
   row: number
 }
 
-export default function TimelineLane({ tasks, startDate, endDate, onTaskClick, onTaskUpdate }: TimelineLaneProps) {
+export default function TimelineLane({ tasks, startDate, endDate, onTaskClick, onTaskUpdate, selectedTaskIds, onTaskSelect }: TimelineLaneProps) {
   const [draggedTask, setDraggedTask] = useState<string | null>(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
@@ -43,7 +45,7 @@ export default function TimelineLane({ tasks, startDate, endDate, onTaskClick, o
     }
   }
 
-  // Layout algorithm - position tasks strictly by their dates, no pushing down
+  // Layout algorithm - prevent overlaps by stacking tasks vertically
   const layoutTasks = (): TaskLayout[] => {
     if (tasks.length === 0) return []
 
@@ -56,28 +58,57 @@ export default function TimelineLane({ tasks, startDate, endDate, onTaskClick, o
     })
 
     const layouts: TaskLayout[] = []
+    const placedTasks: Array<{ task: Task; endTime: number; topPosition: number }> = []
 
-    // Place each task at its actual date position, no overlap avoidance
+    // Place each task, pushing down if it overlaps with existing tasks
     sortedTasks.forEach((task, index) => {
       const taskStart = new Date(task.startDate).getTime()
       const taskEnd = new Date(task.endDate).getTime()
+      const taskDuration = taskEnd - taskStart
       
-      // Calculate position based on actual task dates
+      // Calculate base position from task's actual start date
       const totalDays = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
       const daysFromStart = (taskStart - startDate.getTime()) / (1000 * 60 * 60 * 24)
-      const taskDuration = (taskEnd - taskStart) / (1000 * 60 * 60 * 24)
+      const baseTopPercent = Math.max(0, (daysFromStart / totalDays) * 100)
       
-      const topPercent = Math.max(0, (daysFromStart / totalDays) * 100)
-      const heightPercent = Math.max(2, (taskDuration / totalDays) * 100)
-      const minHeightPx = Math.max(80, heightPercent * 8) // Increased min height
+      // Find the lowest position where this task doesn't overlap with placed tasks
+      let topPosition = taskStart
+      let topPositionPercent = baseTopPercent
+      
+      for (const placed of placedTasks) {
+        const placedStart = new Date(placed.task.startDate).getTime()
+        const placedEnd = placed.endTime
+        
+        // Check if tasks overlap in time
+        if (!(taskEnd <= placedStart || taskStart >= placedEnd)) {
+          // Tasks overlap - push the new task down below the overlapping one
+          const placedBottomTime = placed.topPosition + (placedEnd - placedStart)
+          if (placedBottomTime > topPosition) {
+            topPosition = placedBottomTime
+            // Recalculate percent based on new position
+            const daysFromStartNew = (topPosition - startDate.getTime()) / (1000 * 60 * 60 * 24)
+            topPositionPercent = Math.max(0, (daysFromStartNew / totalDays) * 100)
+          }
+        }
+      }
+      
+      const heightPercent = Math.max(2, (taskDuration / (1000 * 60 * 60 * 24) / totalDays) * 100)
+      const minHeightPx = Math.max(80, heightPercent * 8)
       
       layouts.push({
         task,
-        top: topPercent,
+        top: topPositionPercent,
         height: minHeightPx,
         left: 1,
-        width: 98, // Full width minus small margins
+        width: 98,
         row: index
+      })
+      
+      // Track this task's position and end time
+      placedTasks.push({
+        task,
+        endTime: taskEnd,
+        topPosition: topPosition
       })
     })
 
@@ -168,7 +199,7 @@ export default function TimelineLane({ tasks, startDate, endDate, onTaskClick, o
           return (
             <div
               key={layout.task.id}
-              className={`task-item ${layout.task.category} ${draggedTask === layout.task.id ? 'dragging' : ''}`}
+              className={`task-item ${layout.task.category} ${draggedTask === layout.task.id ? 'dragging' : ''} ${selectedTaskIds.has(layout.task.id) ? 'selected' : ''}`}
               draggable
               onDragStart={(e) => handleDragStart(e, layout.task.id)}
               onDragEnd={handleDragEnd}
@@ -184,7 +215,14 @@ export default function TimelineLane({ tasks, startDate, endDate, onTaskClick, o
               }}
               onClick={(e) => {
                 if (!draggedTask) {
-                  onTaskClick(layout.task.id)
+                  if (e.ctrlKey || e.metaKey) {
+                    // Ctrl+Click for multi-select
+                    e.stopPropagation()
+                    onTaskSelect(layout.task.id, true)
+                  } else {
+                    // Regular click - edit task
+                    onTaskClick(layout.task.id)
+                  }
                 }
               }}
             >
