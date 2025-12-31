@@ -14,12 +14,17 @@ export default function TimelineRuler({ startDate, endDate, viewMode }: Timeline
     const current = new Date(startDate)
 
     if (viewMode === 'months') {
-      while (current <= endDate) {
+      // Start from the first day of the current month
+      const startMonth = new Date(current.getFullYear(), current.getMonth(), 1)
+      let monthDate = new Date(startMonth)
+      
+      while (monthDate <= endDate) {
         markers.push({
-          date: new Date(current),
-          label: current.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+          date: new Date(monthDate),
+          label: monthDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
         })
-        current.setMonth(current.getMonth() + 1)
+        // Move to the first day of the next month to avoid date overflow issues
+        monthDate = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1)
       }
     } else if (viewMode === 'weeks') {
       // Start from the beginning of the week
